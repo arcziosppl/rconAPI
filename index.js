@@ -93,40 +93,18 @@ wss.on("connection", (ws, req) => {
 
     ws.currentCamera = null;
 
-    ws.on("message", (msg, isBinary) => {
-
-        if (isBinary) {
-            if (!ws.currentCamera) return;
-
-            wss.clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify({
-                        type: "camera",
-                        camera: ws.currentCamera
-                    }));
-
-                    client.send(msg, { binary: true });
-                }
-            });
-            return;
-        }
-
+    ws.on("message", (msg) => {
         let packet;
         try {
             packet = JSON.parse(msg.toString());
-            console.log(packet)
         } catch {
             console.error("Invalid JSON");
             return;
         }
 
-        if (packet.type === "camera") {
-            ws.currentCamera = packet.camera;
-            return;
-        }
-
-        if (packet.type === "telemetry") {
+        if (packet.type === "telemetry" || packet.type === "navcam") {
             const message = JSON.stringify(packet);
+            console.log(JSON.parse(message))
 
             wss.clients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
