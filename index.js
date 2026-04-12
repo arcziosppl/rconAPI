@@ -102,7 +102,7 @@ wss.on("connection", (ws, req) => {
             return;
         }
 
-        if (packet.type === "telemetry" || packet.type === "navcam") {
+        if (packet.type === "telemetry" || packet.type === "navcam" || packet.type === "exec") {
             const message = JSON.stringify(packet);
             console.log(JSON.parse(message))
 
