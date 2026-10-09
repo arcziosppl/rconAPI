@@ -6,6 +6,7 @@ const bcrypt = require("bcrypt")
 const dotenv = require("dotenv")
 const url = require("node:url");
 const e = require("express");
+const {Client} = require("ssh2")
 
 const app = express();
 const server = http.createServer(app);
@@ -59,10 +60,10 @@ app.post("/auth", async (req,res)=>{
                 role: "webapp"
             },
             process.env.JWT_SECRET_KEY,
-            {expiresIn: "60m", issuer: "Rcon-api"}
+            {expiresIn: "6h", issuer: "Rcon-api"}
         )
 
-        return res.json({ access_token: token, expires_in: 300 });
+        return res.json({ access_token: token, expires_in: 3600 * 6 });
     }
 
     res.status(400).json({ error: "Invalid auth type" });
@@ -71,27 +72,21 @@ app.post("/auth", async (req,res)=>{
 let wsClients = [];
 
 wss.on("connection", (ws, req) => {
-
     const params = new URLSearchParams(req.url.replace(/^.*\?/, ''));
     const token = params.get('token');
-    console.log(token)
 
-
-    jwt.verify(token, process.env.JWT_SECRET_KEY, (err)=>{
-        if(err){
-            ws.close(1008, "Unauthorized!")
-        }else{
-            wsClients[token] = ws
+    jwt.verify(token, process.env.JWT_SECRET_KEY, (err) => {
+        if (err) {
+            ws.close(1008, "Unauthorized!");
+        } else {
+            wsClients[token] = ws;
         }
-    })
-
+    });
 
     console.log("WebSocket connected");
-    console.log(wsClients)
 
-
-
-    ws.currentCamera = null;
+    let sshConn = null;
+    let sshStream = null;
 
     ws.on("message", (msg) => {
         let packet;
@@ -102,10 +97,64 @@ wss.on("connection", (ws, req) => {
             return;
         }
 
+        if (packet.type === "ssh_init") {
+            if (sshConn) {
+                ws.send(JSON.stringify({ type: "ssh_error", data: "SSH already connected" }));
+                return;
+            }
+
+            sshConn = new Client();
+
+            sshConn.on("ready", () => {
+                console.log("SSH :: connected");
+                ws.send(JSON.stringify({ type: "ssh_status", status: "connected" }));
+
+                sshConn.shell((err, stream) => {
+                    if (err) {
+                        ws.send(JSON.stringify({ type: "ssh_error", data: err.message }));
+                        return;
+                    }
+                    sshStream = stream;
+
+                    stream.on("data", (data) => {
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: "ssh_output", data: data.toString("utf-8") }));
+                        }
+                    }).stderr.on("data", (data) => {
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: "ssh_output", data: data.toString("utf-8") }));
+                        }
+                    });
+
+                    stream.on("close", () => {
+                        console.log("SSH :: stream closed");
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: "ssh_status", status: "closed" }));
+                        }
+                        sshConn.end();
+                    });
+                });
+            }).on("error", (err) => {
+                console.error("SSH :: error", err.message);
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: "ssh_error", data: err.message }));
+                }
+            }).connect({
+                host: process.env.SSH_HOST,
+                port: process.env.SSH_PORT,
+                username: process.env.SSH_USER,
+                password: process.env.SSH_PASS,
+            });
+            return;
+        }
+
+        if (packet.type === "ssh_input" && sshStream) {
+            sshStream.write(packet.data);
+            return;
+        }
+
         if (packet.type === "telemetry" || packet.type === "navcam" || packet.type === "exec") {
             const message = JSON.stringify(packet);
-            console.log(JSON.parse(message))
-
             wss.clients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(message);
@@ -115,17 +164,21 @@ wss.on("connection", (ws, req) => {
     });
 
     ws.on("close", () => {
-        const msg = JSON.stringify({connection: "closed"})
-        wss.clients.forEach(client=>{
-            if(client.readyState === WebSocket.OPEN){
-                client.send(msg)
+        if (sshConn) {
+            sshConn.end();
+        }
+
+        const msg = JSON.stringify({ connection: "closed" });
+        wss.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(msg);
             }
-        })
+        });
         console.log("WebSocket disconnected");
     });
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, "0.0.0.0",() => {
+server.listen(PORT, "0.0.0.0", () => {
     console.log("Server running on", PORT);
 });
