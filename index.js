@@ -78,9 +78,13 @@ wss.on("connection", (ws, req) => {
     jwt.verify(token, process.env.JWT_SECRET_KEY, (err) => {
         if (err) {
             ws.close(1008, "Unauthorized!");
-        } else {
-            wsClients[token] = ws;
+            return;
         }
+
+        if (wsClients[token] && wsClients[token] !== ws) {
+            try { wsClients[token].close(); } catch (e) {}
+        }
+        wsClients[token] = ws;
     });
 
     console.log("WebSocket connected");
@@ -99,8 +103,9 @@ wss.on("connection", (ws, req) => {
 
         if (packet.type === "ssh_init") {
             if (sshConn) {
-                ws.send(JSON.stringify({ type: "ssh_error", data: "SSH already connected" }));
-                return;
+                try { sshConn.end(); } catch (e) {}
+                sshConn = null;
+                sshStream = null;
             }
 
             sshConn = new Client();
@@ -116,15 +121,12 @@ wss.on("connection", (ws, req) => {
                     }
                     sshStream = stream;
 
+
                     stream.on("data", (data) => {
                         if (ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({ type: "ssh_output", data: data.toString("utf-8") }));
+                            ws.send(JSON.stringify({ type: "ssh_output", data: data.toString() }));
                         }
-                    }).stderr.on("data", (data) => {
-                        if (ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({ type: "ssh_output", data: data.toString("utf-8") }));
-                        }
-                    });
+                    })
 
                     stream.on("close", () => {
                         if (ws.readyState === WebSocket.OPEN) {
