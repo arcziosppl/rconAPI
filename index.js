@@ -124,6 +124,7 @@ wss.on("connection", (ws, req) => {
 
                     stream.on("data", (data) => {
                         if (ws.readyState === WebSocket.OPEN) {
+                            console.log(data.toString())
                             ws.send(JSON.stringify({ type: "ssh_output", data: data.toString() }));
                         }
                     })
@@ -151,6 +152,7 @@ wss.on("connection", (ws, req) => {
 
         if (packet.type === "ssh_input" && sshStream) {
             sshStream.write(packet.data);
+            console.log(packet.data)
             return;
         }
 
