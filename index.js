@@ -109,7 +109,7 @@ wss.on("connection", (ws, req) => {
                 console.log("SSH :: connected");
                 ws.send(JSON.stringify({ type: "ssh_status", status: "connected" }));
 
-                sshConn.shell((err, stream) => {
+                sshConn.shell({ term: 'xterm', cols: 80, rows: 24 }, (err, stream) => {
                     if (err) {
                         ws.send(JSON.stringify({ type: "ssh_error", data: err.message }));
                         return;
@@ -127,7 +127,6 @@ wss.on("connection", (ws, req) => {
                     });
 
                     stream.on("close", () => {
-                        console.log("SSH :: stream closed");
                         if (ws.readyState === WebSocket.OPEN) {
                             ws.send(JSON.stringify({ type: "ssh_status", status: "closed" }));
                         }
