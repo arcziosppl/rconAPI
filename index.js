@@ -29,8 +29,9 @@ app.post("/auth", async (req,res)=>{
             return res.status(401).json({error: "Unauthorized"})
         }
 
-        if(!bcrypt.compare(rover_secret, process.env.DEVICE_SECRET_HASH)){
-            return res.status(401).json({error: "Unauthorized!"})
+        const match = await bcrypt.compare(rover_secret, process.env.DEVICE_SECRET_HASH);
+        if (!match) {
+            return res.status(401).json({ error: "Unauthorized!" });
         }
 
         const token = jwt.sign(
@@ -42,7 +43,7 @@ app.post("/auth", async (req,res)=>{
             {expiresIn: "6h", issuer: "Rcon-api"}
         )
 
-        return res.json({ access_token: token, expires_in: 3600 * 6 });
+        return res.json({ access_token: token, expires_in: 2160 });
     }
 
     if (type === "webapp"){
@@ -50,8 +51,9 @@ app.post("/auth", async (req,res)=>{
             return res.status(401).json({error: "Unauthorized"})
         }
 
-        if (!bcrypt.compare(rover_secret, process.env.DEVICE_SECRET_HASH)){
-            return res.status(401).json({error: "Unauthorized!"})
+        const match = await bcrypt.compare(webapp_secret, process.env.WEBAPP_SECRET_HASH);
+        if (!match) {
+            return res.status(401).json({ error: "Unauthorized!" });
         }
 
         const token = jwt.sign(
@@ -63,7 +65,7 @@ app.post("/auth", async (req,res)=>{
             {expiresIn: "6h", issuer: "Rcon-api"}
         )
 
-        return res.json({ access_token: token, expires_in: 3600 * 6 });
+        return res.json({ access_token: token, expires_in: 2160 });
     }
 
     res.status(400).json({ error: "Invalid auth type" });
