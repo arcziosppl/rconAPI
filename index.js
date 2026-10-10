@@ -50,7 +50,7 @@ app.post("/auth", async (req,res)=>{
             return res.status(401).json({error: "Unauthorized"})
         }
 
-        if (!(await bcrypt.compare(rover_secret, process.env.DEVICE_SECRET_HASH))){
+        if (!bcrypt.compare(rover_secret, process.env.DEVICE_SECRET_HASH)){
             return res.status(401).json({error: "Unauthorized!"})
         }
 
