@@ -156,6 +156,25 @@ wss.on("connection", (ws, req) => {
             return;
         }
 
+      if (packet.type === "ssh_close") {
+        if (sshStream) {
+          try {
+            sshStream.destroy()
+          } catch (e) { }
+            sshStream = null
+        }
+
+        if (sshConn) {
+          try {
+            sshConn.end()
+            sshConn.destroy()
+          } catch (e) { }
+            sshConn = null;
+        }
+
+          ws.send(JSON.stringify({ type: "ssh_output", data: {close: true} }));
+      }
+
         if (packet.type === "telemetry" || packet.type === "navcam" || packet.type === "exec") {
             const message = JSON.stringify(packet);
             wss.clients.forEach(client => {
