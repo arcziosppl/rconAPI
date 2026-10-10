@@ -39,10 +39,10 @@ app.post("/auth", async (req,res)=>{
                 role: "rover"
             },
             process.env.JWT_SECRET_KEY,
-            {expiresIn: "60m", issuer: "Rcon-api"}
+            {expiresIn: "6h", issuer: "Rcon-api"}
         )
 
-        return res.json({ access_token: token, expires_in: 300 });
+        return res.json({ access_token: token, expires_in: 3600 * 6 });
     }
 
     if (type === "webapp"){
@@ -50,7 +50,7 @@ app.post("/auth", async (req,res)=>{
             return res.status(401).json({error: "Unauthorized"})
         }
 
-        if(!bcrypt.compare(webapp_secret, process.env.WEBAPP_SECRET_HASH)){
+        if (!(await bcrypt.compare(rover_secret, process.env.DEVICE_SECRET_HASH))){
             return res.status(401).json({error: "Unauthorized!"})
         }
 
@@ -133,7 +133,11 @@ wss.on("connection", (ws, req) => {
                         if (ws.readyState === WebSocket.OPEN) {
                             ws.send(JSON.stringify({ type: "ssh_status", status: "closed" }));
                         }
-                        sshConn.end();
+                        if (sshConn) {
+                            sshConn.end();
+                            sshConn = null;
+                        }
+                        sshStream = null;
                     });
                 });
             }).on("error", (err) => {
@@ -147,6 +151,7 @@ wss.on("connection", (ws, req) => {
                 username: process.env.SSH_USER,
                 password: process.env.SSH_PASS,
             });
+
             return;
         }
 
@@ -157,22 +162,16 @@ wss.on("connection", (ws, req) => {
         }
 
       if (packet.type === "ssh_close") {
-        if (sshStream) {
-          try {
-            sshStream.destroy()
-          } catch (e) { }
-            sshStream = null
-        }
-
-        if (sshConn) {
-          try {
-            sshConn.end()
-            sshConn.destroy()
-          } catch (e) { }
-            sshConn = null;
-        }
-
-          ws.send(JSON.stringify({ type: "ssh_output", data: {close: true} }));
+          if (sshStream) {
+              try { sshStream.end(); } catch (e) {}
+              sshStream = null;
+          }
+          if (sshConn) {
+              try { sshConn.end(); } catch (e) {}
+              sshConn = null;
+          }
+          ws.send(JSON.stringify({ type: "ssh_status", status: "closed" }));
+          return;
       }
 
         if (packet.type === "telemetry" || packet.type === "navcam" || packet.type === "exec") {
